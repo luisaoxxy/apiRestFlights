@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -38,11 +39,17 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 	@Autowired
 	private RestTemplate restTemplate;
 	
-	private static final String ROUTES_URL = "https://api.ryanair.com/core/3/routes";
-	private static final String TIME_TABLE_URL = "https://api.ryanair.com/timetable/3/schedules/{from}/{to}/years/{year}/months/{month}";
+	public static final String ROUTES_URL = "https://api.ryanair.com/core/3/routes";
+	public static final String TIME_TABLE_URL = "https://api.ryanair.com/timetable/3/schedules/{from}/{to}/years/{year}/months/{month}";
 	
 	
 	@Override
+	/**Find direct flights or one stop flights that keep to @arrivalDateTime and @departureDateTime
+	 * @param departure
+	 * @param arrival
+	 * @param departureDateTime
+	 * @param arrivalDateTime
+	 */
 	public List<FlightResponse> searchFlights(String departure, String arrival, LocalDateTime departureDateTime,
 			LocalDateTime arrivalDateTime) {
 		List<FlightResponse> list = new ArrayList<FlightResponse>();
@@ -95,7 +102,7 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 									timeTableArraival.getDays().forEach(dayArrival->{
 										if(dayArrival.getDay() == departureDay.getDay()){
 											List<Day> daysArrival = getArrivalDates(arrivalDateTime, difference, count, departureTimeAux,
-													dayArrival, departureDay, departureFlight);
+													dayArrival, departureFlight);
 											if(!daysArrival.isEmpty()){
 												log.info(daysArrival.size() + " days of " + departureTimeAux.getMonth() + " has flights departing after " + departureFlight.getArrivalTime().plusHours(2));
 												result.getLegs().addAll(addOneStopFlights(departure, arrival, departureDateTime,departureDay,
@@ -113,32 +120,135 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 		});
 		return result;
 	}
+	
+	/**
+	 * Find direct flights that keep to @arrivalDateTime and @departureDateTime
+	 * @param departure
+	 * @param arrival
+	 * @param departureDateTime
+	 * @param arrivalDateTime
+	 * @return
+	 */
+	private FlightResponse getDirectFlights(String departure, String arrival, LocalDateTime departureDateTime,LocalDateTime arrivalDateTime) {
+		FlightResponse result = new FlightResponse(0,new ArrayList<Leg>());
+		long difference = departureDateTime.withDayOfMonth(1).until(arrivalDateTime.withDayOfMonth(1), ChronoUnit.MONTHS);
+		//CHECK IF DEPARTURE AND ARRIVAL BELONG TO SAME MONTH
+		for(int i = 0; i <= difference; i++){
+			LocalDateTime departureAux = departureDateTime.plus(i, ChronoUnit.MONTHS);
+			TimeTable timeTable = getTimeTable(departure, arrival, departureAux);
+			if(timeTable != null){
+				List<Day> days = new ArrayList<Day>();
+				final Integer count = new Integer(i);
+				timeTable.getDays().forEach(departureDay -> {
+					if(difference == 0){
+						//IF BOTH DATES BELONG TO SAME MONTH WE CHECK BOTH CONDITIONS(AFTER DEPARTURE AND BEFORE ARRIVAL)
+						List<Flight> validFlights = new ArrayList<>();
+						Stream<Flight> stream = departureDay.getFlights().stream();
+						if(departureDay.getDay() == departureDateTime.getDayOfMonth()){
+							if(departureDay.getDay() == arrivalDateTime.getDayOfMonth()){
+								validFlights.addAll(stream.filter(fromTime(departureDateTime).and(toTime(arrivalDateTime))).collect(Collectors.toList()));
+							}else{
+								validFlights.addAll(stream.filter(fromTime(departureDateTime)).collect(Collectors.toList()));
+							}
+						}else if(departureDay.getDay() == arrivalDateTime.getDayOfMonth()){
+							validFlights.addAll(stream.filter(toTime(arrivalDateTime)).collect(Collectors.toList()));
+						}else if(departureDay.getDay() > departureDateTime.getDayOfMonth() && departureDay.getDay() < arrivalDateTime.getDayOfMonth()){
+							validFlights.addAll(departureDay.getFlights());
+						}
+						if(!validFlights.isEmpty()){
+							Day validDay = new Day(departureDay.getDay(),validFlights);
+							days.add(validDay);
+						}
+					}else{
+						//IF BOTH DATES BELONG TO DIFFERENT MONTHS WE CHECK DEPARTURE CONDITION ONLY IF IS DEPARTURE MONTH
+						// AND ARRIVAL CONDITION ONLY IF IS ARRIVAL MONTH
+						if(count == 0){
+							//CHECK AFTER DEPARTURE ONLY IF IT´S DEPARTURE DAY
+							if(departureDay.getDay() == departureDateTime.getDayOfMonth()){
+								List<Flight> validFlights = departureDay.getFlights().stream().filter(fromTime(departureDateTime))
+										.collect(Collectors.toList());
+								Day validDay = new Day(departureDay.getDay(),validFlights);
+								days.add(validDay);
+							}else if(departureDay.getDay() > departureDateTime.getDayOfMonth()){
+								days.add(departureDay);
+							}
+						}else if(count == difference){
+							//CHECK BEFORE ARRIVAL ONLY IF IT´S ARRIVAL DAY
+							if(departureDay.getDay() == arrivalDateTime.getDayOfMonth()){
+								List<Flight> validFlights = departureDay.getFlights().stream().filter(toTime(arrivalDateTime))
+										.collect(Collectors.toList());
+								Day validDay = new Day(departureDay.getDay(),validFlights);
+								days.add(validDay);
+							}else if(departureDay.getDay() < arrivalDateTime.getDayOfMonth()){
+								days.add(departureDay);
+							}
+						}else{
+							//IF CURRENT MONTH IS BETWEEN EACH MONTH DATES WE ADD ALL FLIGHTS
+							days.add(departureDay);
+						}
+					}
+				});
+				if(!days.isEmpty()){
+					log.info(days.size() + " days of " + departureAux.getMonth() + " have direct flights");
+					result.getLegs().addAll(addFlights(departure, arrival, departureAux,days));
+				}
+			}
+		}
+		return result;
+	}
+	/**
+	 * Get arrival flights of flight with stops
+	 * @param arrivalDateTime
+	 * @param difference
+	 * @param i
+	 * @param departureTimeAux
+	 * @param arrivalDay
+	 * @param departureDay
+	 * @param departureFlight
+	 * @return
+	 */
 	private List<Day> getArrivalDates(LocalDateTime arrivalDateTime, long difference, int i,
-			LocalDateTime departureTimeAux, Day arrivalDay, Day departureDay, Flight departureFlight) {
+			LocalDateTime departureTimeAux, Day arrivalDay, Flight departureFlight) {
 		List<Day> daysArrival = new ArrayList<Day>();
-		LocalDateTime departureDate = LocalDateTime.of(departureTimeAux.toLocalDate().withDayOfMonth(departureDay.getDay()),
+		//FLIGHT MUST DEPARTURE AT LEATS 2 HOURS LATER THAN ARRIVAL TIME OF DEPARTURE FLIGHT
+		LocalDateTime departureDate = LocalDateTime.of(departureTimeAux.toLocalDate().withDayOfMonth(arrivalDay.getDay()),
 				departureFlight.getArrivalTime()).plusHours(2);
-		log.info("Looking for flights departing after:" + departureDate);
-		if(difference == 0 || i == difference){
-			//ARRIVAL MONTH
-			if(arrivalDay.getDay() == arrivalDateTime.getDayOfMonth()){
-				List<Flight> validFlights = arrivalDay.getFlights().stream().filter(fromTime(departureDate).and(
-						toTime(arrivalDateTime))).collect(Collectors.toList());
+		if(departureDate.getDayOfMonth() == arrivalDay.getDay()){
+			log.debug("Looking for flights departing after:" + departureDate);
+			if(difference == 0 || difference == i){
+				List<Flight> validFlights = new ArrayList<Flight>();
+				if(arrivalDay.getDay() == arrivalDateTime.getDayOfMonth()){
+					//IS ARRIVAL MONTH
+					// CHECK THATS ARRIVES BEFORE ARRIVALTIME
+					validFlights = arrivalDay.getFlights().stream().filter(fromTime(departureDate).and(toTime(arrivalDateTime))).collect(Collectors.toList());
+				}else if(arrivalDay.getDay() < arrivalDateTime.getDayOfMonth()){
+					//ONLY CHECK DEPARTURE TIME AS WILL ARRIVE BEFORE ARRIVALTIME
+					validFlights = arrivalDay.getFlights().stream().filter(fromTime(departureDate)).collect(Collectors.toList());
+				}
 				Day validDay = new Day(arrivalDay.getDay(),validFlights);
 				daysArrival.add(validDay);
-			}else if(arrivalDay.getDay() < arrivalDateTime.getDayOfMonth()){
+			}else{
+				//ALL MONTH EXCEP ARRIVAL
+				//ONLY CHECK DEPARTURE TIME AS WILL ARRIVE BEFORE ARRIVALTIME
 				List<Flight> validFlights = arrivalDay.getFlights().stream().filter(fromTime(departureDate)).collect(Collectors.toList());
 				Day validDay = new Day(arrivalDay.getDay(),validFlights);
 				daysArrival.add(validDay);
 			}
 		}else{
-			//ALL MONTH EXCEP ARRIVAL
-			List<Flight> validFlights = departureDay.getFlights().stream().filter(fromTime(departureDate)).collect(Collectors.toList());
-			Day validDay = new Day(arrivalDay.getDay(),validFlights);
-			daysArrival.add(validDay);
+			log.warn(departureDate + " is in another day than:" + arrivalDay.getDay());
 		}
 		return daysArrival;
 	}
+	
+	/**
+	 * Get departures flights of flight with stops
+	 * @param departureDateTime
+	 * @param arrivalDateTime
+	 * @param difference
+	 * @param i
+	 * @param departureDay
+	 * @return
+	 */
 	private List<Day> getDepartureDates(LocalDateTime departureDateTime, LocalDateTime arrivalDateTime, long difference,
 			int i, Day departureDay) {
 		List<Day> daysDeparture = new ArrayList<Day>();
@@ -178,77 +288,8 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 		}
 		return daysDeparture;
 	}
-	
 	/**
-	 * Find direct flights that keep to @arrivalDateTime and @departureDateTime
-	 * @param departure
-	 * @param arrival
-	 * @param departureDateTime
-	 * @param arrivalDateTime
-	 * @return
-	 */
-	private FlightResponse getDirectFlights(String departure, String arrival, LocalDateTime departureDateTime,LocalDateTime arrivalDateTime) {
-		FlightResponse result = new FlightResponse(0,new ArrayList<Leg>());
-		long difference = departureDateTime.withDayOfMonth(1).until(arrivalDateTime.withDayOfMonth(1), ChronoUnit.MONTHS);
-		//CHECK IF DEPARTURE AND ARRIVAL BELONG TO SAME MONTH
-		for(int i = 0; i <= difference; i++){
-			LocalDateTime departureAux = departureDateTime.plus(i, ChronoUnit.MONTHS);
-			TimeTable timeTable = getTimeTable(departure, arrival, departureAux);
-			if(timeTable != null){
-				List<Day> days = new ArrayList<Day>();
-				final Integer count = new Integer(i);
-				timeTable.getDays().forEach(departureDay -> {
-					if(difference == 0){
-						if(departureDay.getDay() == departureDateTime.getDayOfMonth()){
-							List<Flight> validFlights = departureDay.getFlights().stream().filter(fromTime(departureDateTime).and(toTime(arrivalDateTime)))
-									.collect(Collectors.toList());
-							Day validDay = new Day(departureDay.getDay(),validFlights);
-							days.add(validDay);
-						}else if(departureDay.getDay() > departureDateTime.getDayOfMonth()){
-							days.add(departureDay);
-						}
-						//IF BOTH DATES BELONG TO SAME MONTH WE CHECK BOTH CONDITIONS(AFTER DEPARTURE AND BEFORE ARRIVAL)
-						//days = timeTable.getDays().stream().filter(afterDeparture(departureDateTime).and(beforeArrival(arrivalDateTime)))
-						//	.collect(Collectors.toList());
-						//days = timeTable.getDays().stream().filter(x ->  x.getDay() == departureDateTime.getDayOfMonth()).map(x -> x.getFlights())      //Stream<Set<String>>
-						//      .flatMap(x -> x.stream()).filter(x ->  x.getDepartureTime().compareTo(departureDateTime.toLocalTime()) >= 0).collect(Collectors.toList());
-					}else{
-						//IF BOTH DATES BELONG TO DIFFERENT MONTHS WE CHECK DEPARTURE CONDITION ONLY IF IS DEPARTURE MONTH
-						// AND ARRIVAL CONDITION ONLY IF IS ARRIVAL MONTH
-						if(count == 0){
-							if(departureDay.getDay() == departureDateTime.getDayOfMonth()){
-								List<Flight> validFlights = departureDay.getFlights().stream().filter(fromTime(departureDateTime))
-										.collect(Collectors.toList());
-								Day validDay = new Day(departureDay.getDay(),validFlights);
-								days.add(validDay);
-							}else if(departureDay.getDay() > departureDateTime.getDayOfMonth()){
-								days.add(departureDay);
-							}
-						}else if(count == difference){
-							if(departureDay.getDay() == arrivalDateTime.getDayOfMonth()){
-								List<Flight> validFlights = departureDay.getFlights().stream().filter(toTime(arrivalDateTime))
-										.collect(Collectors.toList());
-								Day validDay = new Day(departureDay.getDay(),validFlights);
-								days.add(validDay);
-							}else if(departureDay.getDay() < arrivalDateTime.getDayOfMonth()){
-								days.add(departureDay);
-							}
-						}else{
-							//IF MONTH IS BETWEEN EACH MONTH DATES WE ADD ALL FLGHTS
-							days.addAll(timeTable.getDays());
-						}
-					}
-					if(!days.isEmpty()){
-						log.info(days.size() + " days of " + departureAux.getMonth() + " have direct flights");
-						result.getLegs().addAll(addFlights(departure, arrival, departureAux,days));
-					}
-				});
-			}
-		}
-		return result;
-	}
-	/**
-	 * parse flights to legs and add them to the list
+	 * Parse flights found to legs
 	 * @param departure
 	 * @param arrival
 	 * @param departureDateTime
@@ -269,6 +310,17 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 		return result;
 	}
 
+	/**
+	 * Parse stops flights to legs
+	 * @param departure
+	 * @param arrival
+	 * @param departureDateTime
+	 * @param departureDay
+	 * @param departurFlight
+	 * @param arrivalDays
+	 * @param stop
+	 * @return
+	 */
 	private List<Leg> addOneStopFlights(String departure, String arrival, LocalDateTime departureDateTime, 
 			Day departureDay, Flight departurFlight ,List<Day> arrivalDays,String stop) {
 		List<Leg> result = new ArrayList<Leg>();
@@ -325,20 +377,11 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 				restTemplate.exchange(ROUTES_URL,HttpMethod.GET, null, new ParameterizedTypeReference<List<Route>>() {
 				});
 		List<Route> routes = routeResponse.getBody();
-		log.info("Total: "+ routes.size());
+		log.info("Total routes found: "+ routes.size());
 		return routes;
 	}
 	
 	//PREDICATES
-	/**
-	 * Filter Days with flights after departureDateTime
-	 * @param departureDateTime
-	 * @return
-	 */
-	private Predicate<Day> afterDeparture(LocalDateTime departureDateTime){
-		return (x ->  x.getDay() == departureDateTime.getDayOfMonth() && x.getFlights().stream().anyMatch(fromTime(departureDateTime))
-				|| x.getDay() > departureDateTime.getDayOfMonth());
-	}
 	/**
 	 * Filter Flights with departuretime after @departureDateTime
 	 * @param departureDateTime
@@ -346,15 +389,6 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 	 */
 	private Predicate<Flight> fromTime(LocalDateTime departureDateTime){
 		return (x ->  x.getDepartureTime().compareTo(departureDateTime.toLocalTime()) >= 0);
-	}
-	/**
-	 * Filter Days with flights before @arrivalDateTime
-	 * @param arrivalDateTime
-	 * @return
-	 */
-	private Predicate<Day> beforeArrival(LocalDateTime arrivalDateTime){
-		return (x ->  x.getDay() == arrivalDateTime.getDayOfMonth() && x.getFlights().stream().anyMatch(toTime(arrivalDateTime))
-				|| x.getDay() < arrivalDateTime.getDayOfMonth());
 	}
 	/**
 	 * Filter Flights with arrivalTime before @arrivalDateTime

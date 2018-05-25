@@ -1,0 +1,21 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Ryanair Interconnections Flights</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+	<h1>Welcome to: Ryanir Interconnections Flights Api Rest</h1>
+    <p>Hi, this flight service is exposed on following URL: '/ryainAirFlights/interconnections' </p>
+    <p>This service is expecting 4 mandatory parameters described below:</p>
+    <ul>
+    	<li><b>departure</b> is a departure airport IATA code</li>
+    	<li><b>departureDateTime</b> is a departure datetime in the departure airport timezone in ISO format(yyyy-MM-ddTHH:mm)</li>
+    	<li><b>arrival</b> is  an arrival airport IATA code</li>
+    	<li><b>arrivalDateTime</b> is a arrival datetime in the departure airport timezone in ISO format(yyyy-MM-ddTHH:mm)</li>
+    </ul>
+    <p>For example like this: /ryainAirFlights/interconnections?departure=<b>DUB</b>&departureDateTime=<b>2018-05-01T10:00</b>&arrival=<b>WRO</b>&arrivalDateTime=<b>2018-05-30T21:25</b></p>
+    <p>This will show a JSON format result, with flights found from departure airport at departure time or later, to arrival airport at arrival time or before</p>
+    <p>including flights with one stop of at least two hours in the same day.</p>
+</body>
+</html>
