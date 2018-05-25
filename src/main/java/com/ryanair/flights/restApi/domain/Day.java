@@ -1,12 +1,18 @@
 package com.ryanair.flights.restApi.domain;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Day {
 
 	private Integer day;
-	private List<Flight> flights = null;
+	private List<Flight> flights = new ArrayList<Flight>();
 
+	public Day(Integer day,List<Flight> flights){
+		this.day = day;
+		this.flights.addAll(flights);
+	}
+	
 	public Integer getDay() {
 		return day;
 	}

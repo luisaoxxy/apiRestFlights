@@ -1,8 +1,8 @@
 package com.ryanair.flights.restApi;
 
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -13,6 +13,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.client.RestTemplate;
 
+import com.ryanair.flights.restApi.domain.Day;
+import com.ryanair.flights.restApi.domain.Flight;
 import com.ryanair.flights.restApi.domain.Route;
 
 @RunWith(SpringRunner.class)
@@ -21,14 +23,19 @@ public class RestApiApplicationTests {
 
 	@Test
 	public void contextLoads() {
-		LocalDateTime today = LocalDateTime.now();
-		LocalDateTime yesterday = today.minusDays(1);
-		LocalDateTime monthLater = yesterday.plusMonths(1).withDayOfMonth(1);
-		LocalDateTime twoMonthLater = yesterday.plusMonths(2).withDayOfMonth(1);
-		long difference = ChronoUnit.MONTHS.between(today.withDayOfMonth(1), monthLater);
-		System.out.println(difference);
-		difference = ChronoUnit.MONTHS.between(today.withDayOfMonth(1), twoMonthLater);;
-		System.out.println(difference);
+		List<Day> days = new ArrayList<Day>();
+		Day d1 = new Day(1,new ArrayList<Flight>());
+		d1.getFlights().add(new Flight("10",null,null));
+		d1.getFlights().add(new Flight("20",null,null));
+		days.add(d1);
+		Day d2 = new Day(2,new ArrayList<Flight>());
+		d2.getFlights().add(new Flight("10",null,null));
+		d2.getFlights().add(new Flight("20",null,null));
+		days.add(d2);
+		List<Day> aux = days.stream().filter(x-> x.getDay() == 1).
+			map(f -> new Day(f.getDay(), 
+					f.getFlights().stream().filter(y-> y.getNumber().equals("10")).collect(Collectors.toList())))
+			.collect(Collectors.toList());
 		RestTemplate restTemplate = new RestTemplate();
 		ResponseEntity<List<Route>> rateResponse =
 		        restTemplate.exchange("https://api.ryanair.com/core/3/routes",

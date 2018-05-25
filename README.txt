@@ -1,0 +1,1 @@
+* Stop flights must be on the same day, this means you will see only flights with stops with at least two hours between each flight but in the same day
