@@ -93,18 +93,18 @@ public class InterconnectionServiceImpl implements InterconnectionService{
 						timeTableDeparture.getDays().forEach(dayAux -> {
 							List<Day> daysDeparture = getDepartureDates(departureDateTime, arrivalDateTime, difference, /*i*/1,	dayAux);
 						if(!daysDeparture.isEmpty()){
-							log.info(daysDeparture.size() + " days of " + departureTimeAux.getMonth() + " has flights departing after " + departureDateTime);
+							log.debug(daysDeparture.size() + " days of " + departureTimeAux.getMonth() + " has flights departing after " + departureDateTime);
 							//LOOK FOR ARRIVAL TIME INTO ARRIVAL AIRPORT
 							final Integer count = new Integer(/*i*/1);
 							daysDeparture.forEach(departureDay -> {
-								log.info(departureDay.getFlights().size() + " flights for day " + departureDay.getDay());
+								log.debug(departureDay.getFlights().size() + " flights for day " + departureDay.getDay());
 								departureDay.getFlights().forEach(departureFlight ->{
 									timeTableArraival.getDays().forEach(dayArrival->{
 										if(dayArrival.getDay() == departureDay.getDay()){
 											List<Day> daysArrival = getArrivalDates(arrivalDateTime, difference, count, departureTimeAux,
 													dayArrival, departureFlight);
 											if(!daysArrival.isEmpty()){
-												log.info(daysArrival.size() + " days of " + departureTimeAux.getMonth() + " has flights departing after " + departureFlight.getArrivalTime().plusHours(2));
+												log.info(departure + "-" + stop + "-" + arrival + " has some flights on " + departureTimeAux.getMonth() + " that arrives before " + departureDateTime);
 												result.getLegs().addAll(addOneStopFlights(departure, arrival, departureDateTime,departureDay,
 														departureFlight,daysArrival,stop));
 											}

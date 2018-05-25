@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -48,7 +49,8 @@ public class RestApiApplicationTests {
 		LocalDateTime now = LocalDateTime.now();
 		for (int i=0; i < 5; i++) {
 			flights = new ArrayList<Flight>();
-			flight =  new Flight(String.valueOf(i), now.toLocalTime().plusHours(i), now.toLocalTime().plusHours(i));
+			LocalTime timeAux =now.toLocalTime().withHour(0).plusHours(i);
+			flight =  new Flight(String.valueOf(i), timeAux, timeAux);
 			flights.add(flight);
 			day = new Day(i, flights);
 			template.add(day);
@@ -89,15 +91,17 @@ public class RestApiApplicationTests {
 	
 	@Test
 	public void fromTime() {
+		LocalTime timeAux = LocalTime.now().withHour(0);
 		List<Flight> list = template.stream().map(Day::getFlights).flatMap(Collection::stream).filter(
-				x ->  x.getDepartureTime().compareTo(LocalDateTime.now().toLocalTime()) >= 0).collect(Collectors.toList());
+				x ->  x.getDepartureTime().compareTo(timeAux) >= 0).collect(Collectors.toList());
 		assertTrue(list.size() == 4);
 	}
 	
 	@Test
 	public void toTime() {
+		LocalTime timeAux = LocalTime.now().withHour(0);
 		List<Flight> list = template.stream().map(Day::getFlights).flatMap(Collection::stream).filter(
-				x ->  x.getArrivalTime().compareTo(LocalDateTime.now().toLocalTime()) <= 0).collect(Collectors.toList());
+				x ->  x.getArrivalTime().compareTo(timeAux) <= 0).collect(Collectors.toList());
 		assertTrue(list.size() == 1);
 	}
 }
